@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>説明資料_PAI最終課題_taso5789</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm; }
+  body { font-family: "Meiryo", "Yu Gothic", sans-serif; font-size: 10pt; line-height: 1.65; color: #1a1f29; margin: 0; }
+  h1 { font-size: 17pt; margin: 0 0 2mm; color: #0b4f71; }
+  .meta { color: #555; font-size: 9pt; margin-bottom: 5mm; border-bottom: 2px solid #0b4f71; padding-bottom: 2mm; }
+  h2 { font-size: 12.5pt; color: #0b4f71; border-left: 4px solid #3aa6d8; padding-left: 2.5mm; margin: 6mm 0 2mm; break-after: avoid; }
+  p { margin: 0 0 2mm; }
+  ul, ol { margin: 0 0 2mm; padding-left: 6mm; }
+  li { margin-bottom: 0.8mm; }
+  table { border-collapse: collapse; width: 100%; margin: 1mm 0 3mm; font-size: 9pt; break-inside: avoid; }
+  th, td { border: 1px solid #b8c4d3; padding: 1.2mm 2mm; text-align: left; vertical-align: top; }
+  th { background: #e8f1f8; }
+  code { font-family: Consolas, monospace; font-size: 8.8pt; background: #f1f4f8; padding: 0 1mm; }
+  pre { font-family: Consolas, monospace; font-size: 8.5pt; background: #f1f4f8; padding: 2mm 3mm; margin: 1mm 0 3mm; white-space: pre-wrap; break-inside: avoid; }
+  figure { margin: 2mm 0 3mm; text-align: center; break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid #b8c4d3; }
+  figcaption { font-size: 8.5pt; color: #555; margin-top: 1mm; }
+  .flow { font-family: Consolas, "Meiryo", monospace; font-size: 9pt; background: #f6f9fc; border: 1px solid #b8c4d3; padding: 2mm 3mm; margin: 1mm 0 3mm; white-space: pre; break-inside: avoid; }
+  .note { font-size: 9pt; color: #444; }
+</style>
+</head>
+<body>
+
+<h1>日本語の指示で動く移動ロボット<br><span style="font-size:12pt">― Claude による行動計画 × MuJoCo シミュレーション ―</span></h1>
+<div class="meta">
+  Physical AI 応用1講座 最終課題　｜　omnicampus アカウント：taso5789<br>
+  コード：https://github.com/taso5789/PhysicalAIAdvancedCourse2026<br>
+  動画：（YouTube の URL を記入）
+</div>
+
+<h2>1. 概要</h2>
+<p>
+日本語で「青いボールを確認してから、緑の箱の前で止まって」のように指示すると、大規模言語モデル（Claude）が指示を解釈して行動計画を立て、
+二輪ロボットがカメラ画像を頼りに目標を探し、近づき、止まるシステムを作成した。シミュレータには MuJoCo を使い、Windows 上だけで動作する。
+</p>
+
+<figure>
+  <img src="images/demo.png" alt="デモ動画の1フレーム">
+  <figcaption>図1　デモ動画の1フレーム。左：部屋全体（赤い箱・緑の箱・青い球と二輪ロボット）、右上：Claude が立てた計画と実行中の手順、右下：ロボットの前方カメラ</figcaption>
+</figure>
+
+<h2>2. 目的・背景</h2>
+<p>
+家庭や倉庫で働くロボットには、専門家でない人が普段の言葉で指示できることが求められる。一方で、言語モデルに直接モーターを動かさせると、
+誤った出力がそのまま危険な動作につながる。そこで本課題では、<b>言語モデルには「何をするか」の計画だけを任せ、
+「どう動くか」はカメラによる認識と決まった制御で確実に行う</b>という役割分担を目標とした。
+</p>
+
+<h2>3. システム構成</h2>
+<div class="flow">日本語の指示 ──▶ Claude（行動計画）──▶ 計画の検証 ──▶ 実行器
+                                                          │
+            前方カメラ（色画像＋距離画像）──▶ 色と距離の認識 ──▶ 移動制御 ──▶ 二輪ロボット</div>
+<table>
+  <tr><th style="width:24%">部分</th><th>内容</th></tr>
+  <tr><td>シミュレータ</td><td>MuJoCo 3.15。床と壁の部屋に赤い箱・緑の箱・青い球を配置。差動二輪ロボットの前方に RGB-D カメラ（色画像と距離画像）を搭載。</td></tr>
+  <tr><td>計画（AI）</td><td>Claude（<code>claude-opus-5-5</code>）に指示を渡し、ツール呼び出し <code>submit_plan</code> で計画を受け取る。動作は <code>search</code>（探索）・<code>approach</code>（接近）・<code>stop</code>（停止）の3種類、対象は red / green / blue に限定。</td></tr>
+  <tr><td>計画の検証</td><td>受け取った計画をプログラム側で再検査（動作数1〜8、許可した動作と色のみ、最後は必ず stop）。不合格ならロボットを動かさない。</td></tr>
+  <tr><td>認識</td><td>色画像から指定色の画素を抽出し、画像内の左右位置と、距離画像から目標面までの距離を求める（ルールベース）。</td></tr>
+  <tr><td>移動制御</td><td>見えなければその場で回転して探索。見えたら画像の中央に合わせながら前進し、目標面まで約 0.65 m で停止。</td></tr>
+  <tr><td>記録</td><td>実行の様子を MP4 に保存（指示・計画・現在の手順・前方カメラ映像を重ねて表示）。</td></tr>
+</table>
+
+<h2>4. AI の役割</h2>
+<p>
+AI（Claude）は<b>日本語の指示を、実行できる行動計画に変換する</b>役割を担う（推論のみで、追加学習は行っていない）。
+例えば「確認してから」は目標を見つけるだけの <code>search</code>、「前で止まって」は近づいて止まる <code>approach</code> と、指示の意味の違いを計画に反映する。
+ロボットにできない指示（物を運ぶなど）には、動かずに <code>stop</code> だけの計画を返す。画像認識は AI ではなくルールベースである。
+</p>
+
+<h2>5. 工夫した点</h2>
+<ol>
+  <li><b>AI に任せる範囲を限定した安全な設計。</b>参考にしたサンプル「ChatGPT API による自然言語ロボット操作」は言語モデルの出力でロボットを動かす構成だが、本課題では出力を3種類の動作と3色に限定したスキーマで受け取り（strict モード）、さらにプログラム側で検証してから実行する。誤った計画や失敗した動作があれば、残りの実行を中止する。</li>
+  <li><b>カメラ画像だけで目標に到達する。</b>シミュレータが持つ物体の正確な座標は移動制御に使わず、前方カメラの色画像と距離画像から目標の方向と距離を求めて動く。実機に近い条件で作り、座標は動作検証の判定だけに使った。</li>
+  <li><b>指示の意味の違いを動作の違いにした。</b>「確認する」（見つけるだけ）と「〜の前で止まる」（近づいて止まる）を別の動作として計画させた。</li>
+  <li><b>できない指示は断る。</b>未対応・曖昧な指示では停止のみの計画にするよう指示し、「コーヒーを持ってきて」では実際に停止のみが返った。</li>
+  <li><b>Windows だけで再現できる構成。</b>参考サンプル「ROS2 と Gazebo の連携によるロボット操作」は Linux 上の ROS 2 を使うが、本課題は MuJoCo と Python のみで構成し、<code>pip install</code> だけで再現できるようにした。</li>
+  <li><b>デモ動画を自動生成。</b>シミュレーションの描画から直接 MP4 を作るため、画面収録が不要で、個人情報が映り込むこともない。</li>
+</ol>
+
+<h2>6. 結果</h2>
+<p><b>(1) 色認識による探索・接近（AI なし、初期位置から各色1回）</b></p>
+<table>
+  <tr><th>目標</th><th>到着までの時間（シミュレーション時間）</th><th>停止位置（ロボット中心〜目標中心）</th></tr>
+  <tr><td>赤い箱</td><td>6.3 秒</td><td>1.127 m</td></tr>
+  <tr><td>緑の箱</td><td>8.5 秒</td><td>1.125 m</td></tr>
+  <tr><td>青い球</td><td>16.4 秒</td><td>1.083 m</td></tr>
+</table>
+<p class="note">停止距離 0.65 m に、目標の半分の大きさ（0.25 m）とロボット中心から前端まで（約 0.22 m）を加えた約 1.12 m とほぼ一致した。</p>
+
+<p><b>(2) Claude による計画と実行</b></p>
+<table>
+  <tr><th style="width:36%">指示</th><th>Claude の計画</th><th style="width:26%">結果</th></tr>
+  <tr><td>赤い箱へ行って</td><td>探索：赤 → 接近：赤 → 停止</td><td>正しい計画（計画のみ確認）</td></tr>
+  <tr><td>青いボールを確認してから、緑の箱の前で止まって</td><td>探索：青 → 探索：緑 → 接近：緑 → 停止</td><td>完走（青を発見 9.0 秒、緑を発見 4.5 秒、緑に接近 7.8 秒）</td></tr>
+  <tr><td>コーヒーを持ってきて</td><td>停止</td><td>動かずに停止</td></tr>
+</table>
+<p>
+このほか、計画の検証・実行の中止・Claude 応答の検査を確かめる単体テスト4件がすべて成功した。
+なお、Claude を使った試行はそれぞれ1回のみで、多数回の成功率は測っていない。
+</p>
+
+<h2>7. 課題と考察</h2>
+<ul>
+  <li><b>認識の限界：</b>色だけで判定しているため、同じ色の物体が複数ある場合や、形の区別（箱か球か）はできない。物体検出モデルや、画像を理解できる言語モデルを使えば改善できる。</li>
+  <li><b>障害物回避なし：</b>目標までの間に障害物がない部屋を前提にしている。</li>
+  <li><b>探索の効率：</b>探索は常に左回りのため、右側の目標（青い球）は見つけるまでに時間がかかった。見失った方向へ回るなどの改善が考えられる。</li>
+  <li><b>計画が一方通行：</b>現在は最初に立てた計画を順に実行するだけで、失敗したときに Claude が計画を立て直す仕組みはない。実行結果を Claude に返して再計画させるのが次の発展である。</li>
+  <li><b>評価の規模：</b>試行回数が少ないため、多様な指示と多数回の試行で成功率を測る必要がある。</li>
+  <li><b>考察：</b>言語モデルに計画だけを任せ、出力を限られた動作に絞って検証する設計により、言語モデルの柔軟さ（指示の意味の違いを読み取る、できないことを断る）と、ロボット動作の確実さを両立できた。</li>
+</ul>
+
+<h2>8. 実行方法</h2>
+<pre>python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+copy .env.example .env      （.env に ANTHROPIC_API_KEY を設定）
+.\.venv\Scripts\python.exe src\main.py --instruction "赤い箱へ行って"</pre>
+<p class="note">詳しくはリポジトリの README を参照。API キーはリポジトリに含めていない。</p>
+
+<h2>9. 参考</h2>
+<ul class="note">
+  <li>ROS2とGazeboの連携によるロボット操作　https://qiita.com/N622/items/9d89f77d85d9da0af29e</li>
+  <li>ChatGPT APIによる自然言語ロボット操作　https://qiita.com/porizou1/items/a085d20e936946330540</li>
+  <li>MuJoCo　https://mujoco.org/</li>
+  <li>Claude API ツール使用（Anthropic）　https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools</li>
+</ul>
+
+</body>
+</html>

@@ -1,0 +1,12 @@
+.venv/
+.env
+.env.*
+!.env.example
+__pycache__/
+outputs/
+Quri.html
+Quri_files/
+*.mp4
+*.preview.png
+課題要項.md
+PLAN.md
